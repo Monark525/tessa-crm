@@ -1,15 +1,14 @@
 'use client';
 
-import ImporterModal from './ImporterModal';
 import WalletModal from './WalletModal';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '../../lib/supabase';
 import {
   LogOut, ShieldCheck, Search, Database, FileSpreadsheet, Building2,
   CircleDollarSign, X, Phone, PhoneCall, Mail, User, MapPin, MessageSquare,
   Send, Clock, Tag, Users, Menu, LayoutDashboard, PhoneCall as PhoneIcon,
-  Mail as MailIcon, Settings, Wallet, ChevronLeft, ChevronRight, Trash2, CheckSquare
+  Mail as MailIcon, Settings, Wallet, ChevronLeft, ChevronRight, Trash2
 } from 'lucide-react';
 import { Device } from '@twilio/voice-sdk';
 
@@ -47,7 +46,6 @@ export default function Dashboard() {
   const [isWalletOpen, setIsWalletOpen] = useState(false);
   const [walletBalance, setWalletBalance] = useState(0.00);
   const [companyId, setCompanyId] = useState('');
-  const [isImporterOpen, setIsImporterOpen] = useState(false);
   const [isSignOutModalOpen, setIsSignOutModalOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
@@ -57,9 +55,17 @@ export default function Dashboard() {
   const [idsToDelete, setIdsToDelete] = useState<string[]>([]);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // Twilio
-  const [callStatus, setCallStatus] = useState<string>('Idle');
+  // Call Modal
+  const [isCallModalOpen, setIsCallModalOpen] = useState(false);
+  const [callPhone, setCallPhone] = useState('');
+  const [callStatus, setCallStatus] = useState<'Idle' | 'Connecting' | 'In Call' | 'Ended'>('Idle');
   const [activeCall, setActiveCall] = useState<any>(null);
+  const [callSeconds, setCallSeconds] = useState(0);
+  const [callScript, setCallScript] = useState(
+    `Hi, this is [Your Name] calling from [Company Name] regarding a surplus funds matter related to the property at [Property Address].\n\nDo you have a moment to talk?`
+  );
+  const [callNote, setCallNote] = useState('');
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     async function loadCompanyData() {
@@ -142,11 +148,19 @@ export default function Dashboard() {
     else setNotes([]);
   }, [selectedClaim]);
 
+  // Call timer
   useEffect(() => {
-    if (!selectedClaim && activeCall) {
-      activeCall.disconnect();
+    if (callStatus === 'In Call') {
+      timerRef.current = setInterval(() => {
+        setCallSeconds(prev => prev + 1);
+      }, 1000);
+    } else {
+      if (timerRef.current) clearInterval(timerRef.current);
     }
-  }, [selectedClaim, activeCall]);
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [callStatus]);
 
   const fetchNotesForClaim = async (claimId: string) => {
     setIsFetchingNotes(true);
@@ -212,7 +226,6 @@ export default function Dashboard() {
     }
   };
 
-  // ===== Selection Logic =====
   const toggleSelectAll = () => {
     if (selectedIds.length === filteredClaims.length) {
       setSelectedIds([]);
@@ -227,68 +240,54 @@ export default function Dashboard() {
     );
   };
 
-  // ===== Delete Logic =====
-const openDeleteConfirm = (ids: string[]) => {
-  setIdsToDelete(ids);
-  setIsDeleteConfirmOpen(true);
-};
+  const openDeleteConfirm = (ids: string[]) => {
+    setIdsToDelete(ids);
+    setIsDeleteConfirmOpen(true);
+  };
 
-const confirmDelete = async () => {
-  if (idsToDelete.length === 0) return;
-  setIsDeleting(true);
+  const confirmDelete = async () => {
+    if (idsToDelete.length === 0) return;
+    setIsDeleting(true);
 
-  try {
-    // 1. Delete related notes first
-    const { error: notesError } = await supabase
-      .from('notes')
-      .delete()
-      .in('claim_id', idsToDelete);
-
-    if (notesError) {
-      console.warn('Notes delete warning:', notesError.message);
-    }
-
-    // 2. Delete related contacts (if any)
-    const { error: contactsError } = await supabase
-      .from('contacts')
-      .delete()
-      .in('claim_id', idsToDelete);
-
-    if (contactsError) {
-      console.warn('Contacts delete warning:', contactsError.message);
-    }
-
-    // 3. Now delete the claims
-    const { error } = await supabase
-      .from('claims')
-      .delete()
-      .in('id', idsToDelete);
-
-    if (error) throw error;
-
-    // Update local state
-    setClaims(prev => prev.filter(c => !idsToDelete.includes(c.id)));
-    setSelectedIds(prev => prev.filter(id => !idsToDelete.includes(id)));
-
-    if (selectedClaim && idsToDelete.includes(selectedClaim.id)) {
-      setSelectedClaim(null);
-    }
-
-    setIsDeleteConfirmOpen(false);
-    setIdsToDelete([]);
-  } catch (err: any) {
-    console.error('Delete failed:', err.message);
-    alert('Failed to delete: ' + err.message);
-  } finally {
-    setIsDeleting(false);
-  }
-};
-
-  const startCall = async (phoneNumber: string) => {
     try {
-      setCallStatus('Connecting...');
-      const cleanDigits = phoneNumber.replace(/\D/g, '');
-      const formattedNumber = cleanDigits.startsWith('1') ? `+\( {cleanDigits}` : `+1 \){cleanDigits}`;
+      await supabase.from('notes').delete().in('claim_id', idsToDelete);
+      await supabase.from('contacts').delete().in('claim_id', idsToDelete);
+
+      const { error } = await supabase.from('claims').delete().in('id', idsToDelete);
+      if (error) throw error;
+
+      setClaims(prev => prev.filter(c => !idsToDelete.includes(c.id)));
+      setSelectedIds(prev => prev.filter(id => !idsToDelete.includes(id)));
+
+      if (selectedClaim && idsToDelete.includes(selectedClaim.id)) {
+        setSelectedClaim(null);
+      }
+
+      setIsDeleteConfirmOpen(false);
+      setIdsToDelete([]);
+    } catch (err: any) {
+      console.error('Delete failed:', err.message);
+      alert('Failed to delete: ' + err.message);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  // ===== CALL LOGIC =====
+  const openCallModal = (phone: string, claim: any) => {
+    setCallPhone(phone);
+    setSelectedClaim(claim);
+    setCallStatus('Idle');
+    setCallSeconds(0);
+    setCallNote('');
+    setIsCallModalOpen(true);
+  };
+
+  const startCall = async () => {
+    try {
+      setCallStatus('Connecting');
+      const cleanDigits = callPhone.replace(/\D/g, '');
+      const formattedNumber = cleanDigits.startsWith('1') ? `+${cleanDigits}` : `+1${cleanDigits}`;
 
       const response = await fetch('/api/twilio/token');
       const data = await response.json();
@@ -299,9 +298,8 @@ const confirmDelete = async () => {
 
       call.on('accept', () => setCallStatus('In Call'));
       call.on('disconnect', () => {
-        setCallStatus('Idle');
+        setCallStatus('Ended');
         setActiveCall(null);
-        setNewNoteText(`Outbound call to ${formattedNumber} completed. Outcome: `);
       });
       call.on('error', (error: any) => {
         console.error('Twilio Error:', error);
@@ -319,6 +317,33 @@ const confirmDelete = async () => {
 
   const endCall = () => {
     if (activeCall) activeCall.disconnect();
+    setCallStatus('Ended');
+  };
+
+  const closeCallModal = async () => {
+    if (activeCall) activeCall.disconnect();
+    
+    if (callNote.trim() && selectedClaim?.id) {
+      const { data: { session } } = await supabase.auth.getSession();
+      await supabase.from('notes').insert({
+        claim_id: selectedClaim.id,
+        company_id: profile?.company_id,
+        author_id: session?.user?.id,
+        note_text: `[Call ${callPhone}] ${callNote.trim()}`
+      });
+      fetchNotesForClaim(selectedClaim.id);
+    }
+
+    setIsCallModalOpen(false);
+    setCallStatus('Idle');
+    setCallSeconds(0);
+    setActiveCall(null);
+  };
+
+  const formatTime = (seconds: number) => {
+    const m = Math.floor(seconds / 60).toString().padStart(2, '0');
+    const s = (seconds % 60).toString().padStart(2, '0');
+    return `\( {m}: \){s}`;
   };
 
   const filteredClaims = claims.filter(c => {
@@ -370,14 +395,12 @@ const confirmDelete = async () => {
               return (
                 <div key={idx} className="flex items-center justify-between bg-slate-900 p-2.5 rounded-lg border border-slate-800">
                   <span className="text-sm font-medium text-slate-200">{phone}</span>
-                  {callStatus === 'Idle' && (
-                    <button
-                      onClick={() => startCall(phone)}
-                      className="bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/40 px-3 py-1.5 rounded-md text-xs font-bold transition-colors flex items-center gap-1.5"
-                    >
-                      <PhoneCall className="w-3.5 h-3.5" /> Dial
-                    </button>
-                  )}
+                  <button
+                    onClick={() => openCallModal(phone, claim)}
+                    className="bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/40 px-3 py-1.5 rounded-md text-xs font-bold transition-colors flex items-center gap-1.5"
+                  >
+                    <PhoneCall className="w-3.5 h-3.5" /> Dial
+                  </button>
                 </div>
               );
             })}
@@ -490,14 +513,12 @@ const confirmDelete = async () => {
           )}
 
           <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl flex flex-col h-[calc(100vh-220px)] overflow-hidden">
-            {/* Header + Bulk Actions */}
             <div className="p-5 border-b border-slate-800 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <div className="flex items-center gap-4">
                 <h2 className="text-lg font-bold text-white">
                   {isAdmin ? 'Active Claims Directory' : 'My Assigned Leads'}
                 </h2>
 
-                {/* Bulk Action Bar */}
                 {selectedIds.length > 0 && (
                   <div className="flex items-center gap-2 bg-slate-800 border border-slate-700 rounded-xl px-3 py-1.5">
                     <span className="text-xs text-slate-300 font-medium">
@@ -537,16 +558,15 @@ const confirmDelete = async () => {
               </div>
             </div>
 
-            {/* Filter Tabs */}
-            <div className="flex items-center gap-2 px-5 py-3 border-b border-slate-800 overflow-x-auto">
+            <div className="px-5 py-3 border-b border-slate-800 flex gap-2 overflow-x-auto">
               {FILTER_TABS.map(tab => (
                 <button
                   key={tab}
                   onClick={() => setActiveFilter(tab)}
-                  className={`whitespace-nowrap px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all ${
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition ${
                     activeFilter === tab
                       ? 'bg-indigo-600 text-white'
-                      : 'bg-slate-800/60 text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+                      : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
                   }`}
                 >
                   {tab}
@@ -554,39 +574,40 @@ const confirmDelete = async () => {
               ))}
             </div>
 
-            {/* Table */}
-            <div className="flex-1 overflow-auto">
-              <table className="w-full text-sm text-left text-slate-300">
+            <div className="overflow-auto flex-1">
+              <table className="w-full text-sm text-left">
                 <thead className="bg-slate-950 text-slate-400 sticky top-0 z-10">
                   <tr>
-                    <th className="px-4 py-3.5 font-medium border-b border-slate-800 w-12">
+                    <th className="px-4 py-3.5 w-10">
                       <input
                         type="checkbox"
                         checked={allSelected}
                         onChange={toggleSelectAll}
-                        className="w-4 h-4 rounded border-slate-600 bg-slate-900 text-indigo-500 focus:ring-indigo-500 cursor-pointer"
+                        className="rounded border-slate-600 bg-slate-900 text-indigo-500 focus:ring-indigo-500"
                       />
                     </th>
-                    <th className="px-5 py-3.5 font-medium border-b border-slate-800">Status</th>
-                    <th className="px-5 py-3.5 font-medium border-b border-slate-800">Owner Name</th>
-                    <th className="px-5 py-3.5 font-medium border-b border-slate-800">Property Address</th>
-                    <th className="px-5 py-3.5 font-medium border-b border-slate-800">County</th>
-                    <th className="px-5 py-3.5 font-medium border-b border-slate-800 text-right">Surplus</th>
+                    <th className="px-4 py-3.5 font-medium">Status</th>
+                    <th className="px-4 py-3.5 font-medium">Owner Name</th>
+                    <th className="px-4 py-3.5 font-medium">Property Address</th>
+                    <th className="px-4 py-3.5 font-medium">County</th>
+                    <th className="px-4 py-3.5 font-medium">Auction Date</th>
+                    <th className="px-4 py-3.5 font-medium text-right">Surplus</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredClaims.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="px-5 py-16 text-center text-slate-500">
-                        No claims match your search or filter.
+                      <td colSpan={7} className="px-4 py-12 text-center text-slate-500">
+                        No claims found.
                       </td>
                     </tr>
                   ) : (
-                    filteredClaims.map((claim, index) => (
+                    filteredClaims.map((claim) => (
                       <tr
-                        key={claim.id || index}
-                        className={`border-b border-slate-800/50 hover:bg-slate-800/50 transition-colors ${
-                          selectedIds.includes(claim.id) ? 'bg-indigo-900/20' : ''
+                        key={claim.id}
+                        onClick={() => setSelectedClaim(claim)}
+                        className={`border-t border-slate-800 hover:bg-slate-800/50 cursor-pointer transition ${
+                          selectedIds.includes(claim.id) ? 'bg-indigo-950/20' : ''
                         }`}
                       >
                         <td className="px-4 py-3.5" onClick={(e) => e.stopPropagation()}>
@@ -594,43 +615,40 @@ const confirmDelete = async () => {
                             type="checkbox"
                             checked={selectedIds.includes(claim.id)}
                             onChange={() => toggleSelectOne(claim.id)}
-                            className="w-4 h-4 rounded border-slate-600 bg-slate-900 text-indigo-500 focus:ring-indigo-500 cursor-pointer"
+                            className="rounded border-slate-600 bg-slate-900 text-indigo-500 focus:ring-indigo-500"
                           />
                         </td>
-                        <td
-                          className="px-5 py-3.5 cursor-pointer"
-                          onClick={() => setSelectedClaim(claim)}
-                        >
-                          <span className={`px-2.5 py-1 rounded-md text-xs font-semibold border ${getStatusColor(claim.lead_status)}`}>
+                        <td className="px-4 py-3.5">
+                          <span className={`inline-flex px-2.5 py-1 rounded-md text-xs font-medium border ${getStatusColor(claim.lead_status || 'New Lead')}`}>
                             {claim.lead_status || 'New Lead'}
                           </span>
                         </td>
-                        <td
-                          className="px-5 py-3.5 font-medium text-slate-200 cursor-pointer"
-                          onClick={() => setSelectedClaim(claim)}
-                        >
+                        <td className="px-4 py-3.5 font-medium text-white">
                           {claim.o1_fname || claim.o1_lname
-                            ? `${claim.o1_fname || ''} ${claim.o1_lname || ''}`
-                            : 'Unknown Owner'}
+                            ? `${claim.o1_fname || ''} ${claim.o1_lname || ''}`.trim()
+                            : '—'}
                         </td>
-                        <td
-                          className="px-5 py-3.5 cursor-pointer"
-                          onClick={() => setSelectedClaim(claim)}
-                        >
+                        <td className="px-4 py-3.5 text-slate-300 max-w-[180px] truncate">
                           {claim.prop_address || '—'}
                         </td>
-                        <td
-                          className="px-5 py-3.5 cursor-pointer"
-                          onClick={() => setSelectedClaim(claim)}
-                        >
+                        <td className="px-4 py-3.5 text-slate-300">
                           {claim.county || '—'}
                         </td>
-                        <td
-                          className="px-5 py-3.5 text-emerald-400 font-medium text-right cursor-pointer"
-                          onClick={() => setSelectedClaim(claim)}
-                        >
+                        <td className="px-4 py-3.5 text-slate-300">
+                          {claim.auction_date
+                            ? new Date(claim.auction_date).toLocaleDateString('en-US', {
+                                year: 'numeric',
+                                month: 'short',
+                                day: 'numeric',
+                              })
+                            : '—'}
+                        </td>
+                        <td className="px-4 py-3.5 text-right font-medium text-emerald-400">
                           {claim.excess_funds
-                            ? '$' + Number(claim.excess_funds).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                            ? '$' + Number(claim.excess_funds).toLocaleString(undefined, {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })
                             : '—'}
                         </td>
                       </tr>
@@ -644,28 +662,22 @@ const confirmDelete = async () => {
       </div>
 
       {/* CLAIM DETAIL MODAL */}
-      {selectedClaim && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-3xl w-full p-6 shadow-2xl relative max-h-[92vh] overflow-y-auto flex flex-col gap-5">
-            <div className="flex justify-between items-start">
-              <div className="flex items-center gap-3">
-                <div className="bg-indigo-900/40 p-3 rounded-xl border border-indigo-500/30 text-indigo-400">
-                  <User className="w-6 h-6" />
-                </div>
-                <div>
-                  <h2 className="text-xl font-bold text-white">
-                    {selectedClaim.o1_fname || ''} {selectedClaim.o1_lname || 'Unknown Owner'}
-                  </h2>
-                  <p className="text-xs text-slate-400">
-                    {selectedClaim.county || 'Unassigned County'} • Case #{selectedClaim.case_number || 'N/A'}
-                  </p>
-                </div>
+      {selectedClaim && !isCallModalOpen && (
+        <div className="fixed inset-0 z-50 flex justify-end bg-black/60 backdrop-blur-sm">
+          <div className="w-full max-w-2xl bg-slate-900 border-l border-slate-800 h-full overflow-y-auto p-6 space-y-6">
+            <div className="flex items-start justify-between">
+              <div>
+                <h2 className="text-xl font-bold text-white">
+                  {selectedClaim.o1_fname || ''} {selectedClaim.o1_lname || ''}
+                </h2>
+                <p className="text-sm text-slate-400 mt-1">
+                  {selectedClaim.county} {selectedClaim.case_number ? `• Case #${selectedClaim.case_number}` : ''}
+                </p>
               </div>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => openDeleteConfirm([selectedClaim.id])}
                   className="text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 p-2 rounded-xl transition-colors"
-                  title="Delete Claim"
                 >
                   <Trash2 className="w-5 h-5" />
                 </button>
@@ -717,12 +729,33 @@ const confirmDelete = async () => {
               )}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="bg-slate-950 p-4 rounded-xl border border-slate-800">
                 <p className="text-xs text-slate-400 font-semibold mb-1 flex items-center gap-1.5">
-                  <MapPin className="w-3.5 h-3.5 text-indigo-400" /> Property Address
+                  <MapPin className="w-3.5 h-3.5 text-indigo-400" /> Full Property Address
                 </p>
-                <p className="text-sm text-slate-200">{selectedClaim.prop_address || 'No address listed'}</p>
+                <p className="text-sm text-slate-200">
+                  {[
+                    selectedClaim.prop_address,
+                    selectedClaim.prop_city,
+                    selectedClaim.prop_state,
+                    selectedClaim.prop_zip,
+                  ].filter(Boolean).join(', ') || 'No address listed'}
+                </p>
+              </div>
+              <div className="bg-slate-950 p-4 rounded-xl border border-slate-800">
+                <p className="text-xs text-slate-400 font-semibold mb-1 flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5 text-amber-400" /> Auction Date
+                </p>
+                <p className="text-sm font-medium text-amber-400">
+                  {selectedClaim.auction_date
+                    ? new Date(selectedClaim.auction_date).toLocaleDateString('en-US', {
+                        year: 'numeric',
+                        month: 'short',
+                        day: 'numeric',
+                      })
+                    : 'Not Scheduled'}
+                </p>
               </div>
               <div className="bg-slate-950 p-4 rounded-xl border border-slate-800">
                 <p className="text-xs text-slate-400 font-semibold mb-1 flex items-center gap-1.5">
@@ -749,20 +782,165 @@ const confirmDelete = async () => {
               {renderPersonBlock('r4', 'Relative 4', selectedClaim)}
               {renderPersonBlock('r5', 'Relative 5', selectedClaim)}
 
-              {callStatus !== 'Idle' && (
-                <div className="flex items-center justify-between bg-indigo-900/30 p-3 rounded-lg border border-indigo-500/50">
-                  <div className="flex items-center gap-2">
-                    <span className="relative flex h-3 w-3">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-3 w-3 bg-indigo-500"></span>
-                    </span>
-                    <span className="text-sm text-indigo-300 font-bold">{callStatus}...</span>
-                  </div>
-                  <button onClick={endCall} className="bg-red-500/20 text-red-400 hover:bg-red-500/40 px-4 py-1.5 rounded-md text-xs font-bold">
-                    End Call
-                  </button>
-                </div>
-              )}
+              {/* Relative 6+ and Associates */}
+              {selectedClaim.custom_fields && typeof selectedClaim.custom_fields === 'object' && (() => {
+                type ContactEntry = {
+                  index: number;
+                  fname: string;
+                  lname: string;
+                  fullName: string;
+                  phones: { order: number; value: string }[];
+                  emails: { order: number; value: string }[];
+                };
+
+                const relativesMap = new Map<number, ContactEntry>();
+                const associatesMap = new Map<number, ContactEntry>();
+
+                const getOrCreate = (map: Map<number, ContactEntry>, index: number): ContactEntry => {
+                  if (!map.has(index)) {
+                    map.set(index, {
+                      index,
+                      fname: '',
+                      lname: '',
+                      fullName: '',
+                      phones: [],
+                      emails: [],
+                    });
+                  }
+                  return map.get(index)!;
+                };
+
+                Object.entries(selectedClaim.custom_fields).forEach(([rawKey, rawVal]) => {
+                  if (rawVal === null || rawVal === undefined) return;
+                  const valStr = String(rawVal).trim();
+                  if (!valStr) return;
+
+                  const normKey = rawKey.replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+
+                  const relMatch = normKey.match(/^(?:custom\s+)?(?:relative\s+|r)(\d+)\s*(.*)$/i);
+                  const assocMatch = !relMatch ? normKey.match(/^(?:custom\s+)?(?:associate\s+|a)(\d+)\s*(.*)$/i) : null;
+
+                  const match = relMatch || assocMatch;
+                  if (!match) return;
+
+                  const isRelative = Boolean(relMatch);
+                  const personIndex = parseInt(match[1], 10);
+
+                  if (isRelative && personIndex <= 5) return;
+
+                  const remainder = (match[2] || '').trim();
+                  const targetMap = isRelative ? relativesMap : associatesMap;
+                  const entry = getOrCreate(targetMap, personIndex);
+
+                  if (/^(first\s*name|fname)$/i.test(remainder)) {
+                    entry.fname = valStr;
+                    return;
+                  }
+                  if (/^(last\s*name|lname)$/i.test(remainder)) {
+                    entry.lname = valStr;
+                    return;
+                  }
+                  if (/^(full\s*name|name)$/i.test(remainder)) {
+                    entry.fullName = valStr;
+                    return;
+                  }
+
+                  if (/\b(phone|mobile|cell|tel)\b/i.test(remainder) && !/\b(type|status|carrier|line|score|dnc)\b/i.test(remainder)) {
+                    const orderMatch = remainder.match(/(\d+)/);
+                    const order = orderMatch ? parseInt(orderMatch[1], 10) : 999;
+
+                    valStr.split(',').forEach((part) => {
+                      const trimmed = part.trim();
+                      const digits = trimmed.replace(/\D/g, '');
+                      if (digits.length >= 7 && digits.length <= 15 && !/[a-zA-Z]/.test(trimmed)) {
+                        entry.phones.push({ order, value: trimmed });
+                      }
+                    });
+                    return;
+                  }
+
+                  if (/\bemail\b/i.test(remainder)) {
+                    const orderMatch = remainder.match(/(\d+)/);
+                    const order = orderMatch ? parseInt(orderMatch[1], 10) : 999;
+
+                    valStr.split(',').forEach((part) => {
+                      const trimmed = part.trim();
+                      if (trimmed.includes('@') && /\S+@\S+\.\S+/.test(trimmed)) {
+                        entry.emails.push({ order, value: trimmed });
+                      }
+                    });
+                  }
+                });
+
+                const buildCards = (map: Map<number, ContactEntry>, roleLabel: string) => {
+                  return Array.from(map.values())
+                    .sort((a, b) => a.index - b.index)
+                    .map((person) => {
+                      const sortedPhones: string[] = [];
+                      person.phones
+                        .sort((a, b) => a.order - b.order)
+                        .forEach((p) => {
+                          if (!sortedPhones.includes(p.value)) sortedPhones.push(p.value);
+                        });
+
+                      const sortedEmails: string[] = [];
+                      person.emails
+                        .sort((a, b) => a.order - b.order)
+                        .forEach((e) => {
+                          if (!sortedEmails.includes(e.value)) sortedEmails.push(e.value);
+                        });
+
+                      if (sortedPhones.length === 0 && sortedEmails.length === 0 && !person.fname && !person.lname && !person.fullName) {
+                        return null;
+                      }
+
+                      const displayName = person.fullName || [person.fname, person.lname].filter(Boolean).join(' ');
+
+                      return (
+                        <div key={`${roleLabel}-${person.index}`} className="bg-slate-950 p-4 rounded-xl border border-slate-800">
+                          <p className="text-xs font-semibold text-indigo-400 mb-3 flex items-center gap-1.5">
+                            <User className="w-3.5 h-3.5" /> {roleLabel} {person.index}
+                            {displayName && (
+                              <span className="text-slate-300 font-medium ml-1">
+                                — {displayName}
+                              </span>
+                            )}
+                          </p>
+
+                          {sortedPhones.length > 0 ? (
+                            <div className="flex flex-col gap-2 mb-3">
+                              {sortedPhones.map((phone, idx) => (
+                                <div key={idx} className="flex items-center justify-between bg-slate-900 p-2.5 rounded-lg border border-slate-800">
+                                  <span className="text-sm font-medium text-slate-200">{phone}</span>
+                                  <button
+                                    onClick={() => openCallModal(phone, selectedClaim)}
+                                    className="bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/40 px-3 py-1.5 rounded-md text-xs font-bold transition-colors flex items-center gap-1.5"
+                                  >
+                                    <PhoneCall className="w-3.5 h-3.5" /> Dial
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-sm text-slate-500 italic mb-2">No phones</p>
+                          )}
+
+                          <p className="text-sm text-slate-300">
+                            <span className="text-slate-500 text-xs">Email: </span>
+                            {sortedEmails.length > 0 ? sortedEmails.join(', ') : 'No emails recorded'}
+                          </p>
+                        </div>
+                      );
+                    });
+                };
+
+                return (
+                  <>
+                    {buildCards(relativesMap, 'Relative')}
+                    {buildCards(associatesMap, 'Associate')}
+                  </>
+                );
+              })()}
             </div>
 
             <div className="bg-slate-950 p-5 rounded-xl border border-slate-800 flex flex-col gap-4">
@@ -794,7 +972,7 @@ const confirmDelete = async () => {
                   <p className="text-xs text-slate-500 text-center py-4">No activity logged yet.</p>
                 ) : (
                   notes.map((note) => (
-                    <div key={note.note_id} className="bg-slate-900 border border-slate-800 rounded-lg p-3 text-xs flex flex-col gap-1">
+                    <div key={note.note_id || note.id} className="bg-slate-900 border border-slate-800 rounded-lg p-3 text-xs flex flex-col gap-1">
                       <div className="flex justify-between items-center text-slate-400">
                         <span className="font-medium text-indigo-300">Agent Note</span>
                         <span className="flex items-center gap-1 text-[10px]">
@@ -812,7 +990,89 @@ const confirmDelete = async () => {
         </div>
       )}
 
-      {/* DELETE CONFIRMATION MODAL */}
+      {/* CALL MODAL */}
+      {isCallModalOpen && selectedClaim && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl">
+            <div className="p-5 border-b border-slate-800 flex items-start justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-white">
+                  {selectedClaim.o1_fname} {selectedClaim.o1_lname}
+                </h2>
+                <p className="text-sm text-slate-400 mt-0.5">{callPhone}</p>
+                <p className="text-xs text-slate-500 mt-1">
+                  {selectedClaim.prop_address} • {selectedClaim.county}
+                </p>
+              </div>
+              <button onClick={closeCallModal} className="text-slate-400 hover:text-white p-2">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-5 border-b border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className={`text-2xl font-mono font-bold ${callStatus === 'In Call' ? 'text-emerald-400' : 'text-slate-300'}`}>
+                  {formatTime(callSeconds)}
+                </div>
+                <div className="text-sm">
+                  <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${
+                    callStatus === 'In Call' ? 'bg-emerald-900/40 text-emerald-400' :
+                    callStatus === 'Connecting' ? 'bg-amber-900/40 text-amber-400' :
+                    'bg-slate-800 text-slate-400'
+                  }`}>
+                    {callStatus}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                {callStatus === 'Idle' || callStatus === 'Ended' ? (
+                  <button
+                    onClick={startCall}
+                    className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-5 py-2.5 rounded-xl text-sm"
+                  >
+                    <PhoneCall className="w-4 h-4" />
+                    Start Call
+                  </button>
+                ) : (
+                  <button
+                    onClick={endCall}
+                    className="flex items-center gap-2 bg-rose-600 hover:bg-rose-500 text-white font-semibold px-5 py-2.5 rounded-xl text-sm"
+                  >
+                    End Call
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="p-5 border-b border-slate-800">
+              <label className="text-xs font-semibold text-slate-400 mb-2 block">Call Script</label>
+              <textarea
+                value={callScript}
+                onChange={(e) => setCallScript(e.target.value)}
+                rows={5}
+                className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 resize-none"
+              />
+            </div>
+
+            <div className="p-5">
+              <label className="text-xs font-semibold text-slate-400 mb-2 block">Call Notes</label>
+              <textarea
+                value={callNote}
+                onChange={(e) => setCallNote(e.target.value)}
+                placeholder="Type notes during or after the call..."
+                rows={3}
+                className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 resize-none"
+              />
+              <p className="text-xs text-slate-500 mt-2">
+                Notes will be automatically saved when you close this window.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DELETE CONFIRMATION */}
       {isDeleteConfirmOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md p-6">
@@ -846,7 +1106,7 @@ const confirmDelete = async () => {
               <button
                 onClick={confirmDelete}
                 disabled={isDeleting}
-                className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white text-sm font-semibold rounded-xl transition flex items-center gap-2"
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white text-sm font-semibold rounded-xl transition"
               >
                 {isDeleting ? 'Deleting...' : 'Yes, Delete'}
               </button>
@@ -861,11 +1121,6 @@ const confirmDelete = async () => {
         companyId={companyId}
         currentBalance={walletBalance}
         onBalanceUpdate={(newBalance) => setWalletBalance(newBalance)}
-      />
-      <ImporterModal
-        isOpen={isImporterOpen}
-        onClose={() => setIsImporterOpen(false)}
-        onImportSuccess={() => setIsImporterOpen(false)}
       />
 
       {isSignOutModalOpen && (
