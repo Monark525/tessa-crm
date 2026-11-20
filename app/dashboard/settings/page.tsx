@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '../../../lib/supabase';
 import {
   Settings, ArrowLeft, Building2, Users, Mail, Phone,
-  User, Shield, Save, Plus, Trash2, CheckCircle2
+  User, Shield, Save, Plus, CheckCircle2, X, Send
 } from 'lucide-react';
 
 export default function SettingsPage() {
@@ -26,6 +26,12 @@ export default function SettingsPage() {
   const [senderName, setSenderName] = useState('');
   const [senderEmail, setSenderEmail] = useState('');
 
+  // Invite Member
+  const [isInviteOpen, setIsInviteOpen] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteRole, setInviteRole] = useState('agent');
+  const [inviting, setInviting] = useState(false);
+
   const isAdmin = profile?.role !== 'agent';
 
   useEffect(() => {
@@ -36,7 +42,6 @@ export default function SettingsPage() {
         return;
       }
 
-      // Profile + Company
       const { data: profileData } = await supabase
         .from('profiles')
         .select(`
@@ -55,7 +60,6 @@ export default function SettingsPage() {
       // @ts-ignore
       setCompanyName(profileData.companies?.company_name || '');
 
-      // Team (Admin only)
       if (profileData.role !== 'agent') {
         const { data: teamData } = await supabase
           .from('profiles')
@@ -66,7 +70,6 @@ export default function SettingsPage() {
         if (teamData) setTeam(teamData);
       }
 
-      // Email Settings
       const { data: emailData } = await supabase
         .from('company_email_settings')
         .select('*')
@@ -79,7 +82,6 @@ export default function SettingsPage() {
         setSenderEmail(emailData.sender_email || '');
       }
 
-      // Phone Numbers
       const { data: phonesData } = await supabase
         .from('company_phone_numbers')
         .select('*')
@@ -99,7 +101,6 @@ export default function SettingsPage() {
     setTimeout(() => setMessage(null), 4000);
   };
 
-  // ===== Save Profile =====
   const saveProfile = async () => {
     if (!fullName.trim()) return;
     setSaving(true);
@@ -119,7 +120,6 @@ export default function SettingsPage() {
     }
   };
 
-  // ===== Save Company =====
   const saveCompany = async () => {
     if (!companyName.trim() || !isAdmin) return;
     setSaving(true);
@@ -139,7 +139,6 @@ export default function SettingsPage() {
     }
   };
 
-  // ===== Save Email Settings =====
   const saveEmailSettings = async () => {
     if (!isAdmin) return;
     setSaving(true);
@@ -164,11 +163,39 @@ export default function SettingsPage() {
         if (error) throw error;
       }
 
-      showMessage('success', 'Email settings saved');
+      showMessage('success', 'Email settings saved successfully');
     } catch (err: any) {
       showMessage('error', err.message);
     } finally {
       setSaving(false);
+    }
+  };
+
+  // ===== INVITE MEMBER =====
+  const handleInvite = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inviteEmail.trim()) return;
+
+    setInviting(true);
+    try {
+      const { error } = await supabase.from('company_invitations').insert({
+        company_id: profile.company_id,
+        email: inviteEmail.trim().toLowerCase(),
+        role: inviteRole,
+        invited_by: profile.id,
+        status: 'pending',
+      });
+
+      if (error) throw error;
+
+      showMessage('success', `Invitation sent to ${inviteEmail}`);
+      setInviteEmail('');
+      setInviteRole('agent');
+      setIsInviteOpen(false);
+    } catch (err: any) {
+      showMessage('error', err.message || 'Failed to send invitation');
+    } finally {
+      setInviting(false);
     }
   };
 
@@ -202,7 +229,7 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        {/* Success / Error Message */}
+        {/* Message */}
         {message && (
           <div className={`mb-6 px-4 py-3 rounded-xl text-sm font-medium flex items-center gap-2 ${
             message.type === 'success'
@@ -227,14 +254,13 @@ export default function SettingsPage() {
           )}
         </div>
 
-        {/* Content Card */}
+        {/* Content */}
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
 
-          {/* ========== MY PROFILE ========== */}
+          {/* PROFILE */}
           {activeTab === 'profile' && (
             <div className="space-y-6">
               <h2 className="text-lg font-semibold text-white">My Profile</h2>
-
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div>
                   <label className="text-xs text-slate-400 block mb-1.5">Full Name</label>
@@ -253,7 +279,6 @@ export default function SettingsPage() {
                   </div>
                 </div>
               </div>
-
               <button
                 onClick={saveProfile}
                 disabled={saving || !fullName.trim()}
@@ -265,11 +290,10 @@ export default function SettingsPage() {
             </div>
           )}
 
-          {/* ========== COMPANY ========== */}
+          {/* COMPANY */}
           {activeTab === 'company' && isAdmin && (
             <div className="space-y-6">
               <h2 className="text-lg font-semibold text-white">Company Information</h2>
-
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div>
                   <label className="text-xs text-slate-400 block mb-1.5">Company Name</label>
@@ -299,7 +323,6 @@ export default function SettingsPage() {
                   </div>
                 </div>
               </div>
-
               <button
                 onClick={saveCompany}
                 disabled={saving || !companyName.trim()}
@@ -311,13 +334,13 @@ export default function SettingsPage() {
             </div>
           )}
 
-          {/* ========== TEAM ========== */}
+          {/* TEAM */}
           {activeTab === 'team' && isAdmin && (
             <div className="space-y-6">
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-semibold text-white">Team Members</h2>
                 <button
-                  onClick={() => alert('Invite system coming soon. For now, create users manually in Supabase Auth and link them in the profiles table.')}
+                  onClick={() => setIsInviteOpen(true)}
                   className="flex items-center gap-1.5 text-xs bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-lg font-medium"
                 >
                   <Plus className="w-3.5 h-3.5" />
@@ -358,7 +381,7 @@ export default function SettingsPage() {
             </div>
           )}
 
-          {/* ========== EMAIL SETTINGS ========== */}
+          {/* EMAIL SETTINGS */}
           {activeTab === 'email' && isAdmin && (
             <div className="space-y-6">
               <div>
@@ -393,7 +416,7 @@ export default function SettingsPage() {
 
               <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 text-xs text-slate-400">
                 <p className="font-medium text-slate-300 mb-1">Note</p>
-                Domain verification and API key (SendGrid / Resend) will be added in the next phase so emails can actually be delivered.
+                Domain verification and email provider (Resend / SendGrid) will be added later so emails can actually be delivered.
               </div>
 
               <button
@@ -407,7 +430,7 @@ export default function SettingsPage() {
             </div>
           )}
 
-          {/* ========== PHONE NUMBERS ========== */}
+          {/* PHONE NUMBERS */}
           {activeTab === 'phone' && isAdmin && (
             <div className="space-y-6">
               <div className="flex items-center justify-between">
@@ -418,7 +441,7 @@ export default function SettingsPage() {
                   </p>
                 </div>
                 <button
-                  onClick={() => alert('Phone number purchasing will be available after the wallet top-up system is completed.')}
+                  onClick={() => alert('Phone number purchasing will be available after the wallet system is completed.')}
                   className="flex items-center gap-1.5 text-xs bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-lg font-medium"
                 >
                   <Plus className="w-3.5 h-3.5" />
@@ -430,9 +453,6 @@ export default function SettingsPage() {
                 <div className="bg-slate-950 border border-slate-800 rounded-xl p-8 text-center">
                   <Phone className="w-8 h-8 text-slate-600 mx-auto mb-3" />
                   <p className="text-sm text-slate-400">No phone numbers connected yet.</p>
-                  <p className="text-xs text-slate-500 mt-1">
-                    Numbers you purchase through Tessa will appear here.
-                  </p>
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -443,9 +463,7 @@ export default function SettingsPage() {
                     >
                       <div>
                         <p className="text-sm font-medium text-white">{phone.phone_number}</p>
-                        <p className="text-xs text-slate-400">
-                          {phone.friendly_name || 'No friendly name'}
-                        </p>
+                        <p className="text-xs text-slate-400">{phone.friendly_name || 'No friendly name'}</p>
                       </div>
                       <div className="text-xs text-slate-500">
                         {phone.twilio_sid ? 'Connected' : 'Not linked'}
@@ -458,6 +476,69 @@ export default function SettingsPage() {
           )}
         </div>
       </div>
+
+      {/* ========== INVITE MEMBER MODAL ========== */}
+      {isInviteOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md p-6">
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-lg font-bold text-white">Invite Team Member</h3>
+              <button onClick={() => setIsInviteOpen(false)} className="text-slate-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleInvite} className="space-y-4">
+              <div>
+                <label className="text-xs text-slate-400 block mb-1.5">Email Address</label>
+                <input
+                  type="email"
+                  required
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                  placeholder="colleague@company.com"
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs text-slate-400 block mb-1.5">Role</label>
+                <select
+                  value={inviteRole}
+                  onChange={(e) => setInviteRole(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500"
+                >
+                  <option value="agent">Agent</option>
+                  <option value="manager">Manager</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+
+              <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-400">
+                The person will receive an invitation. After they create an account with this email, you can link them to your company.
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsInviteOpen(false)}
+                  className="flex-1 px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-semibold rounded-xl"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={inviting || !inviteEmail.trim()}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-sm font-semibold rounded-xl"
+                >
+                  <Send className="w-4 h-4" />
+                  {inviting ? 'Sending...' : 'Send Invite'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
