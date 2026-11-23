@@ -1071,7 +1071,7 @@ Hi, I'm calling about your former property at ${propertyAddress}${county ? ` in 
               <textarea
                 value={callScript}
                 onChange={(e) => setCallScript(e.target.value)}
-                rows={14}
+                rows={25}
                 className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 resize-none"
               />
             </div>
