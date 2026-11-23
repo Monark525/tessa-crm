@@ -275,13 +275,34 @@ export default function Dashboard() {
 
   // ===== CALL LOGIC =====
   const openCallModal = (phone: string, claim: any) => {
-    setCallPhone(phone);
-    setSelectedClaim(claim);
-    setCallStatus('Idle');
-    setCallSeconds(0);
-    setCallNote('');
-    setIsCallModalOpen(true);
-  };
+  setCallPhone(phone);
+  setSelectedClaim(claim);
+  setCallStatus('Idle');
+  setCallSeconds(0);
+  setCallNote('');
+
+  // Build dynamic script with real data
+  const ownerName = `${claim.o1_fname || ''} ${claim.o1_lname || ''}`.trim() || 'the owner';
+  const propertyAddress = claim.prop_address || 'the property';
+  const county = claim.county || '';
+
+  const dynamicScript = `Hi, I'm calling about your former property at ${propertyAddress}${county ? ` in ${county}` : ''}. Are you aware of the payout cheque that belongs to you from the sale of this property?
+
+Ok I need to verify, am I speaking with ${ownerName}? Or are you somehow related to them or know how to get in touch with them?
+
+Ok great! I'm David from Tessa Holdings Group. When your property was sold, it generated surplus proceeds — a payout cheque that goes to you after liens are paid off. Tessa Holdings helps you file a claim for it with zero upfront cost or risk to you because we handle all the fees, paperwork, and notary costs. This costs you absolutely $0 — meaning we don't get paid if we can't get you your money.
+
+I'd like to send you more details with proof of the amount owed to you along with our company's information. Can I get your email address to do this?
+
+OK got it!
+
+────────────────────────
+VOICEMAIL SCRIPT:
+Hi, I'm calling about your former property at ${propertyAddress}${county ? ` in ${county}` : ''} to notify you about the payout cheque that belongs to you from the sale of this property. If this is ${ownerName}, the previous owner of this property, or you are somehow related to them, please give me a callback at (601) 685-4303 or text me at (704) 444-0874 for more details. Please pass this message on to them to contact me. My name is David calling from Tessa Holdings Group. Thank you.`;
+
+  setCallScript(dynamicScript);
+  setIsCallModalOpen(true);
+};
 
   const startCall = async () => {
     try {
@@ -341,10 +362,10 @@ export default function Dashboard() {
   };
 
   const formatTime = (seconds: number) => {
-    const m = Math.floor(seconds / 60).toString().padStart(2, '0');
-    const s = (seconds % 60).toString().padStart(2, '0');
-    return `\( {m}: \){s}`;
-  };
+  const m = Math.floor(seconds / 60).toString().padStart(2, '0');
+  const s = (seconds % 60).toString().padStart(2, '0');
+  return `${m}:${s}`;
+};
 
   const filteredClaims = claims.filter(c => {
     const matchesSearch =
@@ -1050,7 +1071,7 @@ export default function Dashboard() {
               <textarea
                 value={callScript}
                 onChange={(e) => setCallScript(e.target.value)}
-                rows={5}
+                rows={14}
                 className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 resize-none"
               />
             </div>
