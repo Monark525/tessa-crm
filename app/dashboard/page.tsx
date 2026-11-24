@@ -336,16 +336,39 @@ Hi, I'm calling about your former property at ${propertyAddress}${county ? ` in 
     }
   };
 
-  const endCall = () => {
-    if (activeCall) activeCall.disconnect();
-    setCallStatus('Ended');
-  };
+const endCall = () => {
+  if (activeCall) {
+    activeCall.disconnect();
+  }
+  setCallStatus('Ended');
+};
 
-  const closeCallModal = async () => {
-    if (activeCall) activeCall.disconnect();
-    
+const closeCallModal = async () => {
+  // Make sure the call is disconnected
+  if (activeCall) {
+    activeCall.disconnect();
+  }
+
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+
+    // 1. Save Call Log
+    if (callPhone && profile?.company_id) {
+      await supabase.from('call_logs').insert({
+        company_id: profile.company_id,
+        agent_id: session?.user?.id || null,
+        phone_number_dialed: callPhone,
+        call_direction: 'Outbound',
+        call_status: callStatus === 'Ended' || callSeconds > 0 ? 'Completed' : 'No Answer',
+        duration_seconds: callSeconds || 0,
+        billed_minutes: Math.ceil((callSeconds || 0) / 60),
+        agent_notes: callNote.trim() || null,
+        // Optional: you can link to the claim later if you add a claim_id column
+      });
+    }
+
+    // 2. Also save the note (as you already do)
     if (callNote.trim() && selectedClaim?.id) {
-      const { data: { session } } = await supabase.auth.getSession();
       await supabase.from('notes').insert({
         claim_id: selectedClaim.id,
         company_id: profile?.company_id,
@@ -354,12 +377,17 @@ Hi, I'm calling about your former property at ${propertyAddress}${county ? ` in 
       });
       fetchNotesForClaim(selectedClaim.id);
     }
+  } catch (err) {
+    console.error('Error saving call log:', err);
+  }
 
-    setIsCallModalOpen(false);
-    setCallStatus('Idle');
-    setCallSeconds(0);
-    setActiveCall(null);
-  };
+  // Reset modal state
+  setIsCallModalOpen(false);
+  setCallStatus('Idle');
+  setCallSeconds(0);
+  setActiveCall(null);
+  setCallNote('');
+};
 
   const formatTime = (seconds: number) => {
   const m = Math.floor(seconds / 60).toString().padStart(2, '0');
