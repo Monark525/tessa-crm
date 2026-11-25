@@ -56,16 +56,25 @@ export default function Dashboard() {
   const [isDeleting, setIsDeleting] = useState(false);
 
   // Call Modal
-  const [isCallModalOpen, setIsCallModalOpen] = useState(false);
-  const [callPhone, setCallPhone] = useState('');
-  const [callStatus, setCallStatus] = useState<'Idle' | 'Connecting' | 'In Call' | 'Ended'>('Idle');
-  const [activeCall, setActiveCall] = useState<any>(null);
-  const [callSeconds, setCallSeconds] = useState(0);
-  const [callScript, setCallScript] = useState(
-    `Hi, this is [Your Name] calling from [Company Name] regarding a surplus funds matter related to the property at [Property Address].\n\nDo you have a moment to talk?`
-  );
-  const [callNote, setCallNote] = useState('');
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+const [isCallModalOpen, setIsCallModalOpen] = useState(false);
+const [callPhone, setCallPhone] = useState('');
+const [callStatus, setCallStatus] = useState<'Idle' | 'Connecting' | 'In Call' | 'Ended'>('Idle');
+const [activeCall, setActiveCall] = useState<any>(null);
+const [callSeconds, setCallSeconds] = useState(0);
+const [callScript, setCallScript] = useState(`...`);
+const [callNote, setCallNote] = useState('');
+const timerRef = useRef<NodeJS.Timeout | null>(null);
+
+// ===== ADD THESE NEW EMAIL STATES =====
+const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
+const [emailTo, setEmailTo] = useState('');
+const [emailSubject, setEmailSubject] = useState('');
+const [emailBody, setEmailBody] = useState('');
+const [emailType, setEmailType] = useState<'owner' | 'relative'>('owner');
+const [emailRecipientName, setEmailRecipientName] = useState('');
+const [isSendingEmail, setIsSendingEmail] = useState(false);
+const [callContactName, setCallContactName] = useState('');
+const [callContactRole, setCallContactRole] = useState('');
 
   useEffect(() => {
     async function loadCompanyData() {
@@ -274,21 +283,27 @@ export default function Dashboard() {
   };
 
   // ===== CALL LOGIC =====
-  const openCallModal = (phone: string, claim: any) => {
+  const openCallModal = (
+  phone: string,
+  claim: any,
+  contactName?: string,
+  contactRole?: string
+) => {
   setCallPhone(phone);
   setSelectedClaim(claim);
   setCallStatus('Idle');
   setCallSeconds(0);
   setCallNote('');
+  setCallContactName(contactName || '');
+  setCallContactRole(contactRole || '');
 
-  // Build dynamic script with real data
   const ownerName = `${claim.o1_fname || ''} ${claim.o1_lname || ''}`.trim() || 'the owner';
   const propertyAddress = claim.prop_address || 'the property';
   const county = claim.county || '';
 
   const dynamicScript = `Hi, I'm calling about your former property at ${propertyAddress}${county ? ` in ${county}` : ''}. Are you aware of the payout cheque that belongs to you from the sale of this property?
 
-Ok I need to verify, am I speaking with ${ownerName}? Or are you somehow related to them or know how to get in touch with them?
+Ok I need to verify, am I speaking with ${contactName || ownerName}? Or are you somehow related to them or know how to get in touch with them?
 
 Ok great! I'm David from Tessa Holdings Group. When your property was sold, it generated surplus proceeds — a payout cheque that goes to you after liens are paid off. Tessa Holdings helps you file a claim for it with zero upfront cost or risk to you because we handle all the fees, paperwork, and notary costs. This costs you absolutely $0 — meaning we don't get paid if we can't get you your money.
 
@@ -298,10 +313,104 @@ OK got it!
 
 ────────────────────────
 VOICEMAIL SCRIPT:
-Hi, I'm calling about your former property at ${propertyAddress}${county ? ` in ${county}` : ''} to notify you about the payout cheque that belongs to you from the sale of this property. If this is ${ownerName}, the previous owner of this property, or you are somehow related to them, please give me a callback at (601) 685-4303 or text me at (704) 444-0874 for more details. Please pass this message on to them to contact me. My name is David calling from Tessa Holdings Group. Thank you.`;
+Hi, I'm calling about your former property at ${propertyAddress}${county ? ` in ${county}` : ''} to notify you about the payout cheque that belongs to you from the sale of this property. If this is ${contactName || ownerName}, the previous owner of this property, or you are somehow related to them, please give me a callback at (601) 685-4303 or text me at (704) 444-0874 for more details. Please pass this message on to them to contact me. My name is David calling from Tessa Holdings Group. Thank you.`;
 
   setCallScript(dynamicScript);
   setIsCallModalOpen(true);
+};
+const openEmailModal = (
+  email: string,
+  claim: any,
+  type: 'owner' | 'relative',
+  recipientName?: string
+) => {
+  setEmailTo(email);
+  setEmailType(type);
+  setEmailRecipientName(recipientName || '');
+  setSelectedClaim(claim);
+
+  const ownerName = `${claim.o1_fname || ''} ${claim.o1_lname || ''}`.trim() || 'the owner';
+  const fullAddress = [
+    claim.prop_address,
+    claim.prop_city,
+    claim.prop_state,
+    claim.prop_zip
+  ].filter(Boolean).join(', ') || 'the property';
+  const county = claim.county || '';
+
+  if (type === 'owner') {
+    setEmailSubject(`Audited Property File for "${fullAddress}" In "${county}"`);
+    setEmailBody(`Hi, this email is for the former owner of "${fullAddress}" located in ${county}.
+
+I hope this message finds you well. I am reaching out regarding a positive financial matter connected to your former property.
+
+My firm, Tessa Holdings Group LLC, recently conducted an audit of property records and uncovered a substantial surplus balance that may be due to you.
+When property files are closed, surplus funds are often left behind; If they are not claimed within a specific window, they are permanently absorbed by government agencies.
+
+We specialize in helping individuals legally recover these funds. We handle 100% of the research, paperwork, and all legal compliance fees with *zero risk or upfront cost to you*. We only get paid a percentage if and when we successfully recover your funds. If we don't recover anything, you owe us absolutely nothing.
+
+I would love to schedule a brief, 5-minute call to share the details of our audit with you. You can reply directly to this email or give me a call back at (601) 685-4303 or text me at (704) 444-0874.
+
+Warm regards,
+
+Tessa Holdings Group LLC
+(601) 685-4303
+(704) 444-0874
+TessaHoldingsGroup@outlook.com
+www.tessaholdingsgroup.com`);
+  } else {
+    setEmailSubject(`Contact Request Regarding "${ownerName}"`);
+    setEmailBody(`Sir/Madam,
+
+I am a payment distribution agent for TESSA HOLDINGS GROUP, LLC. Your name came up as a potential relative/associate of "${ownerName}".
+
+Our company is trying to contact them regarding a payout cheque that belongs to them from a property they own or owned in ${county}. The county has sent notices to them at the address(es) they have on file, yet they have been returned.
+
+If you have a way to reach them, please forward this email to them or have them give us a call at (601) 685-4303 or text us at (704) 444-0874. If you have any questions, please contact us or visit our website at www.tessaholdingsgroup.com.
+
+Tessa Holdings Group LLC
+(601) 685-4303
+(704) 444-0874
+TessaHoldingsGroup@outlook.com
+www.tessaholdingsgroup.com`);
+  }
+
+  setIsEmailModalOpen(true);
+};
+
+const sendEmail = async () => {
+  if (!emailTo || !emailSubject || !emailBody) return;
+  setIsSendingEmail(true);
+
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+
+    const res = await fetch('/api/email/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        to: emailTo,
+        subject: emailSubject,
+        html: emailBody,
+        companyId: profile?.company_id,
+        claimId: selectedClaim?.id,
+        emailType: emailType,
+        recipientName: emailRecipientName,
+        sentBy: session?.user?.id
+      })
+    });
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to send email');
+
+    alert('Email sent successfully!');
+    setIsEmailModalOpen(false);
+  } catch (err: any) {
+    console.error(err);
+    alert('Failed to send email: ' + err.message);
+  } finally {
+    setIsSendingEmail(false);
+  }
 };
 
   const startCall = async () => {
@@ -344,7 +453,6 @@ const endCall = () => {
 };
 
 const closeCallModal = async () => {
-  // Make sure the call is disconnected
   if (activeCall) {
     activeCall.disconnect();
   }
@@ -352,22 +460,21 @@ const closeCallModal = async () => {
   try {
     const { data: { session } } = await supabase.auth.getSession();
 
-    // 1. Save Call Log
+    // Save Call Log
     if (callPhone && profile?.company_id) {
       await supabase.from('call_logs').insert({
         company_id: profile.company_id,
         agent_id: session?.user?.id || null,
         phone_number_dialed: callPhone,
         call_direction: 'Outbound',
-        call_status: callStatus === 'Ended' || callSeconds > 0 ? 'Completed' : 'No Answer',
+        call_status: callSeconds > 0 ? 'Completed' : 'No Answer',
         duration_seconds: callSeconds || 0,
         billed_minutes: Math.ceil((callSeconds || 0) / 60),
         agent_notes: callNote.trim() || null,
-        // Optional: you can link to the claim later if you add a claim_id column
       });
     }
 
-    // 2. Also save the note (as you already do)
+    // Save Note
     if (callNote.trim() && selectedClaim?.id) {
       await supabase.from('notes').insert({
         claim_id: selectedClaim.id,
@@ -378,10 +485,10 @@ const closeCallModal = async () => {
       fetchNotesForClaim(selectedClaim.id);
     }
   } catch (err) {
-    console.error('Error saving call log:', err);
+    console.error('Error saving call data:', err);
   }
 
-  // Reset modal state
+  // Reset modal
   setIsCallModalOpen(false);
   setCallStatus('Idle');
   setCallSeconds(0);
@@ -418,53 +525,72 @@ const closeCallModal = async () => {
   };
 
   const renderPersonBlock = (prefix: string, label: string, claim: any) => {
-    const fname = claim[`${prefix}_fname`];
-    const lname = claim[`${prefix}_lname`];
-    const phones = claim[`${prefix}_phones`];
-    const emails = claim[`${prefix}_emails`];
+  const fname = claim[`${prefix}_fname`];
+  const lname = claim[`${prefix}_lname`];
+  const phones = claim[`${prefix}_phones`];
+  const emails = claim[`${prefix}_emails`];
 
-    if (!fname && !lname && !phones && !emails) return null;
+  if (!fname && !lname && !phones && !emails) return null;
 
-    return (
-      <div key={prefix} className="bg-slate-950 p-4 rounded-xl border border-slate-800">
-        <p className="text-xs font-semibold text-indigo-400 mb-3 flex items-center gap-1.5">
-          <User className="w-3.5 h-3.5" /> {label}
-          {(fname || lname) && (
-            <span className="text-slate-300 font-medium ml-1">
-              — {fname || ''} {lname || ''}
-            </span>
-          )}
-        </p>
+  const fullName = `${fname || ''} ${lname || ''}`.trim();
+  const isOwner = prefix.startsWith('o');
+  const roleLabel = isOwner ? 'Owner' : label;
 
-        {phones ? (
-          <div className="flex flex-col gap-2 mb-3">
-            {phones.split(',').map((phoneStr: string, idx: number) => {
-              const phone = phoneStr.trim();
-              if (!phone) return null;
-              return (
-                <div key={idx} className="flex items-center justify-between bg-slate-900 p-2.5 rounded-lg border border-slate-800">
-                  <span className="text-sm font-medium text-slate-200">{phone}</span>
-                  <button
-                    onClick={() => openCallModal(phone, claim)}
-                    className="bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/40 px-3 py-1.5 rounded-md text-xs font-bold transition-colors flex items-center gap-1.5"
-                  >
-                    <PhoneCall className="w-3.5 h-3.5" /> Dial
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <p className="text-sm text-slate-500 italic mb-2">No phones</p>
+  return (
+    <div key={prefix} className="bg-slate-950 p-4 rounded-xl border border-slate-800">
+      <p className="text-xs font-semibold text-indigo-400 mb-3 flex items-center gap-1.5">
+        <User className="w-3.5 h-3.5" /> {label}
+        {fullName && (
+          <span className="text-slate-300 font-medium ml-1">— {fullName}</span>
         )}
+      </p>
 
-        <p className="text-sm text-slate-300">
-          <span className="text-slate-500 text-xs">Email: </span>
-          {emails || 'No emails recorded'}
-        </p>
-      </div>
-    );
-  };
+      {phones ? (
+        <div className="flex flex-col gap-2 mb-3">
+          {phones.split(',').map((phoneStr: string, idx: number) => {
+            const phone = phoneStr.trim();
+            if (!phone) return null;
+            return (
+              <div key={idx} className="flex items-center justify-between bg-slate-900 p-2.5 rounded-lg border border-slate-800">
+                <span className="text-sm font-medium text-slate-200">{phone}</span>
+                <button
+                  onClick={() => openCallModal(phone, claim, fullName, isOwner ? '' : roleLabel)}
+                  className="bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/40 px-3 py-1.5 rounded-md text-xs font-bold transition-colors flex items-center gap-1.5"
+                >
+                  <PhoneCall className="w-3.5 h-3.5" /> Dial
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="text-sm text-slate-500 italic mb-2">No phones</p>
+      )}
+
+      {emails ? (
+        <div className="flex flex-col gap-2">
+          {emails.split(',').map((emailStr: string, idx: number) => {
+            const email = emailStr.trim();
+            if (!email) return null;
+            return (
+              <div key={idx} className="flex items-center justify-between bg-slate-900 p-2.5 rounded-lg border border-slate-800">
+                <span className="text-sm font-medium text-slate-200 truncate max-w-[180px]">{email}</span>
+                <button
+                  onClick={() => openEmailModal(email, claim, isOwner ? 'owner' : 'relative', fullName)}
+                  className="bg-indigo-500/20 text-indigo-400 hover:bg-indigo-500/40 px-3 py-1.5 rounded-md text-xs font-bold transition-colors flex items-center gap-1.5"
+                >
+                  <Mail className="w-3.5 h-3.5" /> Email
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="text-sm text-slate-500 italic">No emails recorded</p>
+      )}
+    </div>
+  );
+};
 
   if (loading) {
     return (
@@ -922,66 +1048,101 @@ const closeCallModal = async () => {
                 });
 
                 const buildCards = (map: Map<number, ContactEntry>, roleLabel: string) => {
-                  return Array.from(map.values())
-                    .sort((a, b) => a.index - b.index)
-                    .map((person) => {
-                      const sortedPhones: string[] = [];
-                      person.phones
-                        .sort((a, b) => a.order - b.order)
-                        .forEach((p) => {
-                          if (!sortedPhones.includes(p.value)) sortedPhones.push(p.value);
-                        });
+  return Array.from(map.values())
+    .sort((a, b) => a.index - b.index)
+    .map((person) => {
+      const sortedPhones: string[] = [];
+      person.phones
+        .sort((a, b) => a.order - b.order)
+        .forEach((p) => {
+          if (!sortedPhones.includes(p.value)) sortedPhones.push(p.value);
+        });
 
-                      const sortedEmails: string[] = [];
-                      person.emails
-                        .sort((a, b) => a.order - b.order)
-                        .forEach((e) => {
-                          if (!sortedEmails.includes(e.value)) sortedEmails.push(e.value);
-                        });
+      const sortedEmails: string[] = [];
+      person.emails
+        .sort((a, b) => a.order - b.order)
+        .forEach((e) => {
+          if (!sortedEmails.includes(e.value)) sortedEmails.push(e.value);
+        });
 
-                      if (sortedPhones.length === 0 && sortedEmails.length === 0 && !person.fname && !person.lname && !person.fullName) {
-                        return null;
-                      }
+      if (
+        sortedPhones.length === 0 &&
+        sortedEmails.length === 0 &&
+        !person.fname &&
+        !person.lname &&
+        !person.fullName
+      ) {
+        return null;
+      }
 
-                      const displayName = person.fullName || [person.fname, person.lname].filter(Boolean).join(' ');
+      const displayName =
+        person.fullName || [person.fname, person.lname].filter(Boolean).join(' ');
 
-                      return (
-                        <div key={`${roleLabel}-${person.index}`} className="bg-slate-950 p-4 rounded-xl border border-slate-800">
-                          <p className="text-xs font-semibold text-indigo-400 mb-3 flex items-center gap-1.5">
-                            <User className="w-3.5 h-3.5" /> {roleLabel} {person.index}
-                            {displayName && (
-                              <span className="text-slate-300 font-medium ml-1">
-                                — {displayName}
-                              </span>
-                            )}
-                          </p>
+      return (
+        <div
+          key={`${roleLabel}-${person.index}`}
+          className="bg-slate-950 p-4 rounded-xl border border-slate-800"
+        >
+          <p className="text-xs font-semibold text-indigo-400 mb-3 flex items-center gap-1.5">
+            <User className="w-3.5 h-3.5" /> {roleLabel} {person.index}
+            {displayName && (
+              <span className="text-slate-300 font-medium ml-1">— {displayName}</span>
+            )}
+          </p>
 
-                          {sortedPhones.length > 0 ? (
-                            <div className="flex flex-col gap-2 mb-3">
-                              {sortedPhones.map((phone, idx) => (
-                                <div key={idx} className="flex items-center justify-between bg-slate-900 p-2.5 rounded-lg border border-slate-800">
-                                  <span className="text-sm font-medium text-slate-200">{phone}</span>
-                                  <button
-                                    onClick={() => openCallModal(phone, selectedClaim)}
-                                    className="bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/40 px-3 py-1.5 rounded-md text-xs font-bold transition-colors flex items-center gap-1.5"
-                                  >
-                                    <PhoneCall className="w-3.5 h-3.5" /> Dial
-                                  </button>
-                                </div>
-                              ))}
-                            </div>
-                          ) : (
-                            <p className="text-sm text-slate-500 italic mb-2">No phones</p>
-                          )}
+          {/* Phones */}
+          {sortedPhones.length > 0 ? (
+            <div className="flex flex-col gap-2 mb-3">
+              {sortedPhones.map((phone, idx) => (
+                <div
+                  key={idx}
+                  className="flex items-center justify-between bg-slate-900 p-2.5 rounded-lg border border-slate-800"
+                >
+                  <span className="text-sm font-medium text-slate-200">{phone}</span>
+                  <button
+                    onClick={() =>
+                      openCallModal(phone, selectedClaim, displayName, roleLabel)
+                    }
+                    className="bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/40 px-3 py-1.5 rounded-md text-xs font-bold transition-colors flex items-center gap-1.5"
+                  >
+                    <PhoneCall className="w-3.5 h-3.5" /> Dial
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-slate-500 italic mb-2">No phones</p>
+          )}
 
-                          <p className="text-sm text-slate-300">
-                            <span className="text-slate-500 text-xs">Email: </span>
-                            {sortedEmails.length > 0 ? sortedEmails.join(', ') : 'No emails recorded'}
-                          </p>
-                        </div>
-                      );
-                    });
-                };
+          {/* Emails */}
+          {sortedEmails.length > 0 ? (
+            <div className="flex flex-col gap-2">
+              {sortedEmails.map((email, idx) => (
+                <div
+                  key={idx}
+                  className="flex items-center justify-between bg-slate-900 p-2.5 rounded-lg border border-slate-800"
+                >
+                  <span className="text-sm font-medium text-slate-200 truncate max-w-[180px]">
+                    {email}
+                  </span>
+                  <button
+                    onClick={() =>
+                      openEmailModal(email, selectedClaim, 'relative', displayName)
+                    }
+                    className="bg-indigo-500/20 text-indigo-400 hover:bg-indigo-500/40 px-3 py-1.5 rounded-md text-xs font-bold transition-colors flex items-center gap-1.5"
+                  >
+                    <Mail className="w-3.5 h-3.5" /> Email
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-slate-500 italic">No emails recorded</p>
+          )}
+        </div>
+      );
+    });
+};
 
                 return (
                   <>
@@ -1044,19 +1205,21 @@ const closeCallModal = async () => {
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl">
             <div className="p-5 border-b border-slate-800 flex items-start justify-between">
-              <div>
-                <h2 className="text-lg font-bold text-white">
-                  {selectedClaim.o1_fname} {selectedClaim.o1_lname}
-                </h2>
-                <p className="text-sm text-slate-400 mt-0.5">{callPhone}</p>
-                <p className="text-xs text-slate-500 mt-1">
-                  {selectedClaim.prop_address} • {selectedClaim.county}
-                </p>
-              </div>
-              <button onClick={closeCallModal} className="text-slate-400 hover:text-white p-2">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+  <div>
+    <h2 className="text-lg font-bold text-white">
+      {callContactName
+        ? `${callContactName}${callContactRole ? ` (${callContactRole} of ${selectedClaim.o1_fname} ${selectedClaim.o1_lname})` : ''}`
+        : `${selectedClaim.o1_fname} ${selectedClaim.o1_lname}`}
+    </h2>
+    <p className="text-sm text-slate-400 mt-0.5">{callPhone}</p>
+    <p className="text-xs text-slate-500 mt-1">
+      {selectedClaim.prop_address} • {selectedClaim.county}
+    </p>
+  </div>
+  <button onClick={closeCallModal} className="text-slate-400 hover:text-white p-2">
+    <X className="w-5 h-5" />
+  </button>
+</div>
 
             <div className="p-5 border-b border-slate-800 flex items-center justify-between">
               <div className="flex items-center gap-4">
@@ -1120,6 +1283,66 @@ const closeCallModal = async () => {
           </div>
         </div>
       )}
+      {/* EMAIL MODAL */}
+{isEmailModalOpen && selectedClaim && (
+  <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+    <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl">
+      <div className="p-5 border-b border-slate-800 flex items-start justify-between">
+        <div>
+          <h2 className="text-lg font-bold text-white">
+            Send Email – {emailType === 'owner' ? 'Owner' : 'Relative / Associate'}
+          </h2>
+          <p className="text-sm text-slate-400 mt-0.5">{emailTo}</p>
+          {emailRecipientName && (
+            <p className="text-xs text-slate-500 mt-1">{emailRecipientName}</p>
+          )}
+        </div>
+        <button onClick={() => setIsEmailModalOpen(false)} className="text-slate-400 hover:text-white p-2">
+          <X className="w-5 h-5" />
+        </button>
+      </div>
+
+      <div className="p-5 space-y-4">
+        <div>
+          <label className="text-xs font-semibold text-slate-400 mb-1.5 block">Subject</label>
+          <input
+            type="text"
+            value={emailSubject}
+            onChange={(e) => setEmailSubject(e.target.value)}
+            className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500"
+          />
+        </div>
+
+        <div>
+          <label className="text-xs font-semibold text-slate-400 mb-1.5 block">Email Body</label>
+          <textarea
+            value={emailBody}
+            onChange={(e) => setEmailBody(e.target.value)}
+            rows={16}
+            className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 resize-none"
+          />
+        </div>
+
+        <div className="flex justify-end gap-3 pt-2">
+          <button
+            onClick={() => setIsEmailModalOpen(false)}
+            className="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-semibold rounded-xl"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={sendEmail}
+            disabled={isSendingEmail}
+            className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-sm font-semibold rounded-xl"
+          >
+            <Send className="w-4 h-4" />
+            {isSendingEmail ? 'Sending...' : 'Send Email'}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
 
       {/* DELETE CONFIRMATION */}
       {isDeleteConfirmOpen && (
