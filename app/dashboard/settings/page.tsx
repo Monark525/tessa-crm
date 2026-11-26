@@ -33,7 +33,16 @@ export default function SettingsPage() {
   const [inviting, setInviting] = useState(false);
 
   const isAdmin = profile?.role !== 'agent';
+  
+  const fetchTeamMembers = async (companyId: string) => {
+  const { data: teamData } = await supabase
+    .from('profiles')
+    .select('id, full_name, role, created_at')
+    .eq('company_id', companyId)
+    .order('created_at', { ascending: true });
 
+  if (teamData) setTeam(teamData);
+};
   useEffect(() => {
     const load = async () => {
       const { data: { session } } = await supabase.auth.getSession();
