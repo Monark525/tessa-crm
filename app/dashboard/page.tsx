@@ -301,7 +301,7 @@ const [callContactRole, setCallContactRole] = useState('');
   const propertyAddress = claim.prop_address || 'the property';
   const county = claim.county || '';
 
-  const dynamicScript = `Hi, I'm calling about your former property at ${propertyAddress}${county ? ` in ${county}` : ''}. Are you aware of the payout cheque that belongs to you from the sale of this property?
+  const dynamicScript = `Hi, I'm calling about your former property at ${propertyAddress}${county ? ` in ${county}` : ''}. Are you aware of the payout check that belongs to you from the sale of this property?
 
 Ok I need to verify, am I speaking with ${contactName || ownerName}? Or are you somehow related to them or know how to get in touch with them?
 
@@ -364,7 +364,7 @@ www.tessaholdingsgroup.com`);
 
 I am a payment distribution agent for TESSA HOLDINGS GROUP, LLC. Your name came up as a potential relative/associate of "${ownerName}".
 
-Our company is trying to contact them regarding a payout cheque that belongs to them from a property they own or owned in ${county}. The county has sent notices to them at the address(es) they have on file, yet they have been returned.
+Our company is trying to contact them regarding a payout check that belongs to them from a property they own or owned in ${county}. The county has sent notices to them at the address(es) they have on file, yet they have been returned.
 
 If you have a way to reach them, please forward this email to them or have them give us a call at (601) 685-4303 or text us at (704) 444-0874. If you have any questions, please contact us or visit our website at www.tessaholdingsgroup.com.
 

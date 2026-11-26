@@ -23,14 +23,36 @@ export async function POST(request: Request) {
       sentBy
     } = body;
 
-    if (!to || !subject || !html) {
+    if (!to || !subject || !html || !companyId) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    // Send the email via Resend
+    // 1. Get company details
+    const { data: company, error: companyError } = await supabase
+      .from('companies')
+      .select('company_name, contact_email, verified_sending_domain')
+      .eq('id', companyId)
+      .single();
+
+    if (companyError || !company) {
+      return NextResponse.json({ error: 'Company not found' }, { status: 404 });
+    }
+
+    const companyName = company.company_name || 'Claims Department';
+    const replyEmail = company.contact_email || 'TessaHoldingsGroup@outlook.com';
+
+    // 2. Decide the From address
+    // If the company has verified their own domain → use it
+    // Otherwise → use Tessa's verified domain
+    const fromAddress = company.verified_sending_domain
+      ? `${companyName} <claims@${company.verified_sending_domain}>`
+      : `${companyName} <outreach@main.tessaholdingsgroup.com>`;
+
+    // 3. Send the email
     const { data, error } = await resend.emails.send({
-      from: 'Tessa Holdings Group <onboarding@resend.dev>', // temporary - change later when you verify a domain
+      from: fromAddress,
       to: [to],
+      replyTo: replyEmail,
       subject: subject,
       html: html.replace(/\n/g, '<br>'),
     });
@@ -40,7 +62,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // Log the email
+    // 4. Log the email
     await supabase.from('email_logs').insert({
       company_id: companyId,
       claim_id: claimId || null,
