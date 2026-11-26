@@ -178,17 +178,30 @@ export default function SettingsPage() {
 
     setInviting(true);
     try {
-      const { error } = await supabase.from('company_invitations').insert({
-        company_id: profile.company_id,
-        email: inviteEmail.trim().toLowerCase(),
-        role: inviteRole,
-        invited_by: profile.id,
-        status: 'pending',
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        throw new Error('Your session expired. Please refresh and try again.');
+      }
+
+      const response = await fetch('/api/team/invite', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          email: inviteEmail.trim().toLowerCase(),
+          role: inviteRole,
+        }),
       });
 
-      if (error) throw error;
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to send invitation');
+      }
 
-      showMessage('success', `Invitation sent to ${inviteEmail}`);
+      await fetchTeamMembers(profile.company_id);
+      showMessage('success', `Invitation link sent to ${inviteEmail.trim()}`);
       setInviteEmail('');
       setInviteRole('agent');
       setIsInviteOpen(false);

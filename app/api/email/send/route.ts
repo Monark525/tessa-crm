@@ -39,14 +39,14 @@ export async function POST(request: Request) {
     }
 
     const companyName = company.company_name || 'Claims Department';
-    const replyEmail = company.contact_email || 'TessaHoldingsGroup@outlook.com';
+    const replyEmail = company.contact_email || 'Tessaholdings@gmail.com';
 
     // 2. Decide the From address
-    // If the company has verified their own domain → use it
-    // Otherwise → use Tessa's verified domain
+    // If the company has verified their own domain -> use it
+    // Otherwise -> use Tessa's verified mail.tessaholdingsgroup.com subdomain
     const fromAddress = company.verified_sending_domain
       ? `${companyName} <claims@${company.verified_sending_domain}>`
-      : `${companyName} <outreach@main.tessaholdingsgroup.com>`;
+      : `${companyName} <outreach@mail.tessaholdingsgroup.com>`;
 
     // 3. Send the email
     const { data, error } = await resend.emails.send({
